@@ -1,0 +1,126 @@
+Create a New GCP Project
+gcloud projects create my-microservices-project --set-as-default
+gcloud config set project my-microservices-project
+
+Enable Required APIs
+gcloud services enable container.googleapis.com \
+    compute.googleapis.com \
+    iam.googleapis.com \
+    cloudbuild.googleapis.com \
+    artifactregistry.googleapis.com
+
+IAM & Security Best Practices
+  Create a Service Account for GKE
+  gcloud iam service-accounts create gke-service-account \
+    --display-name="GKE Service Account"
+
+Grant Permissions
+gcloud projects add-iam-policy-binding my-microservices-project \
+    --member="serviceAccount:gke-service-account@my-microservices-project.iam.gserviceaccount.com" \
+    --role="roles/container.admin"
+
+Build and Push Docker Images to Artifact Registry
+gcloud artifacts repositories create microservices-repo \
+    --repository-format=docker \
+    --location=us-central1 \
+    --description="Docker repo for microservices"
+
+# Tag and push Docker images
+docker tag my-service gcr.io/my-microservices-project/my-service
+docker push gcr.io/my-microservices-project/my-service
+
+Create a GKE Cluster
+gcloud container clusters create-auto my-gke-cluster \
+    --region=us-central1 \
+    --release-channel=regular \
+    --enable-autoscaling \
+    --min-nodes=1 \
+    --max-nodes=5
+
+Get Cluster Credentials
+gcloud container clusters get-credentials my-gke-cluster --region=us-central1
+
+Create Kubernetes Deployment & Service YAML
+my-service.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: my-service
+  template:
+    metadata:
+      labels:
+        app: my-service
+    spec:
+      containers:
+      - name: my-service
+        image: gcr.io/my-microservices-project/my-service
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-service
+spec:
+  type: ClusterIP
+  selector:
+    app: my-service
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+
+
+Apply Configuration
+kubectl apply -f my-service.yaml
+
+
+Enable RBAC
+# rbac-role.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: default
+  name: pod-reader
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "watch", "list"]
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: read-pods
+  namespace: default
+subjects:
+- kind: User
+  name: "developer@example.com"
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: pod-reader
+  apiGroup: rbac.authorization.k8s.io
+
+
+Use Network Policies
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+
+kubectl get pods
+kubectl get services
+kubectl get ingress
+kubectl top pods
+
+
